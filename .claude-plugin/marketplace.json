@@ -1,0 +1,21 @@
+{
+  "name": "cjunekim-plugins",
+  "owner": {
+    "name": "cjunekim"
+  },
+  "metadata": {
+    "description": "Personal Claude Code plugins by cjunekim.",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "nemotron-personas-korea",
+      "description": "Korean LLM-as-respondent toolkit built around the nvidia/Nemotron-Personas-Korea HuggingFace dataset (1M synthetic Korean adults). Bundles a dataset-reference skill (schema quirks, instrument-design lessons, bundled inspection + persona-loader scripts), a persona-respondent sub-agent for closed-form survey calls, and a /persona-interviewee slash command for in-character qualitative interviews.",
+      "version": "0.1.0",
+      "author": {
+        "name": "cjunekim"
+      },
+      "source": "./plugins/nemotron-personas-korea"
+    }
+  ]
+}
