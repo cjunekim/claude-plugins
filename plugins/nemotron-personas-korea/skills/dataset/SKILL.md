@@ -52,6 +52,8 @@ Decide per question, not by use mode. For each candidate narrative field, ask: *
 - **The over-pattern-matching warning is real but narrow.** For closed-form (Y/N, Likert, multi-choice, numeric), an *irrelevant* facet — vivid hobby detail in a question about something else — can crystallize the answer onto a personality adjective rather than the persona's actual circumstances. The fix is field selection, not blanket suppression of narrative depth.
 - **Interview / qualitative depth** — default to all 10 narrative fields (6 `*_persona` + 4 supplementary). Multi-turn conversation needs the texture; selective inclusion makes responses feel generic.
 
+**Hand-off to `nemotron-personas-korea:persona-respondent`**: when dispatching to that sub-agent, your prompt IS the hand-off — there is no separate metadata channel. The agent's md file (`agents/persona-respondent.md`) reads the prompt under the assumption that you followed this guidance. Selecting fields well here directly shapes the agent's response quality on the receiving end.
+
 ## Population characteristics that affect sampling design
 
 - **Ages skew older.** Mean 50.7, median 51 (the 1M-row population, not a calibrated reference). For sex × age-band stratification at small N (~300), the small cells are 19-29, NOT 60+ as one might predict. Sample-size floors to protect crosstab cells should target 19-29.
