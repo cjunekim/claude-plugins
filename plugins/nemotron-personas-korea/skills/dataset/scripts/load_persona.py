@@ -24,7 +24,11 @@ format, suitable for piping into a prompt builder or reading verbatim.
 from __future__ import annotations
 
 import argparse
+import operator
 import sys
+from functools import reduce
+
+import pandas as pd
 
 REPO = "nvidia/Nemotron-Personas-Korea"
 
@@ -69,9 +73,16 @@ DESCRIPTIVE_FIELDS = [
     "occupation", "bachelors_field", "family_type",
 ]
 
+NUMERIC_OPS = {
+    ">=": operator.ge,
+    "<=": operator.le,
+    ">":  operator.gt,
+    "<":  operator.lt,
+}
 
-def parse_filter(spec: str) -> list[tuple[str, str, str]]:
-    """`sex=여자,age>=30,xsubstr=요리` → list of (col, op, val) triples.
+
+def parse_filter(spec):
+    """List of (col, op, val) triples parsed from `sex=여자,age>=30,xsubstr=요리`.
     Recognized ops: `=` `==` `>=` `<=` `>` `<`."""
     items = []
     for clause in spec.split(","):
@@ -86,47 +97,57 @@ def parse_filter(spec: str) -> list[tuple[str, str, str]]:
     return items
 
 
-def apply_filter(df, items):
-    """`df` filtered down to rows satisfying every (col, op, val) clause."""
-    import pandas as pd
-    for col, op, val in items:
+def province_mask(cells, val):
+    """Boolean mask of rows whose province cell equals or substring-matches `val` under official-name alias normalization (so 서울 and 서울특별시 both hit)."""
+    requested = PROVINCE_ALIASES.get(val, val)
+    text = cells.astype(str)
+    return (
+        (text == requested)
+        | text.str.contains(val, regex=False, na=False)
+        | text.apply(lambda actual: actual in val)
+    )
+
+
+def xsubstr_mask(df, val):
+    """Boolean mask of rows where `val` (case-insensitive) appears as a substring in any DESCRIPTIVE_FIELDS cell."""
+    needle = val.lower()
+    fields = df[DESCRIPTIVE_FIELDS].fillna("").astype(str)
+    return fields.apply(lambda col: col.str.lower().str.contains(needle, regex=False, na=False)).any(axis=1)
+
+
+def clause_mask(df, col, op, val):
+    """Boolean mask of rows in `df` satisfying the single clause (col op val)."""
+    if col == "xsubstr":
+        return xsubstr_mask(df, val)
+    if col == "province" and op in ("=", "=="):
+        return province_mask(df[col], val)
+    if op in ("=", "=="):
+        return df[col].astype(str) == val
+    return NUMERIC_OPS[op](df[col], type(df[col].iloc[0])(val))
+
+
+def validate_items(df, items):
+    """First structural problem with `items` against `df`, or None if every clause is well-formed."""
+    for col, op, _ in items:
         if col == "xsubstr":
             if op not in ("=", "=="):
-                sys.exit("xsubstr only supports '=' or '==' operators")
-            missing = [field for field in DESCRIPTIVE_FIELDS if field not in df.columns]
+                return "xsubstr only supports '=' or '==' operators"
+            missing = [f for f in DESCRIPTIVE_FIELDS if f not in df.columns]
             if missing:
-                sys.exit(f"xsubstr fields missing from dataset: {missing}")
-            needle = val.lower()
-            text = df[DESCRIPTIVE_FIELDS].fillna("").astype(str)
-            mask = text.apply(lambda s: s.str.lower().str.contains(needle, regex=False, na=False)).any(axis=1)
-            df = df[mask]
-            continue
-        if col not in df.columns:
-            sys.exit(f"unknown column: {col!r} (available: {list(df.columns)})")
-        series = df[col]
-        if op in ("=", "=="):
-            if col == "province":
-                requested = PROVINCE_ALIASES.get(val, val)
-                values = series.astype(str)
-                df = df[
-                    (values == requested)
-                    | values.str.contains(val, regex=False, na=False)
-                    | values.apply(lambda actual: actual in val)
-                ]
-            else:
-                df = df[series.astype(str) == val]
-        elif op == ">=":
-            df = df[series >= type(series.iloc[0])(val)]
-        elif op == "<=":
-            df = df[series <= type(series.iloc[0])(val)]
-        elif op == ">":
-            df = df[series > type(series.iloc[0])(val)]
-        elif op == "<":
-            df = df[series < type(series.iloc[0])(val)]
-    return df
+                return f"xsubstr fields missing from dataset: {missing}"
+        elif col not in df.columns:
+            return f"unknown column: {col!r} (available: {list(df.columns)})"
+    return None
 
 
-def main() -> None:
+def apply_filter(df, items):
+    """`df` restricted to rows where every clause's mask holds."""
+    masks = (clause_mask(df, *item) for item in items)
+    keep = reduce(operator.and_, masks, pd.Series(True, index=df.index))
+    return df.loc[keep]
+
+
+def main():
     sys.stdout.reconfigure(encoding="utf-8")
 
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
@@ -149,6 +170,9 @@ def main() -> None:
         row = hits.iloc[0]
     else:
         items = parse_filter(args.filter)
+        issue = validate_items(df, items)
+        if issue:
+            sys.exit(issue)
         hits = apply_filter(df, items)
         if hits.empty:
             sys.exit(f"no persona matches filter: {args.filter}")
