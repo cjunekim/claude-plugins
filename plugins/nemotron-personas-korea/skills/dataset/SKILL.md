@@ -54,6 +54,39 @@ Decide per question, not by use mode. For each candidate narrative field, ask: *
 
 **Hand-off to `nemotron-personas-korea:persona-respondent`**: when dispatching to that sub-agent, your prompt IS the hand-off — there is no separate metadata channel. The agent's md file (`agents/persona-respondent.md`) reads the prompt under the assumption that you followed this guidance. Selecting fields well here directly shapes the agent's response quality on the receiving end.
 
+## Throughput patterns and dispatch strategy
+
+Claude Code's Agent tool has a **global concurrency cap of ~4** simultaneous sub-agent dispatches, applied across all subagent types. Per-dispatch overhead is type-dependent: `nemotron-personas-korea:persona-respondent` ≈ 1.85s/dispatch (plugin loading); `general-purpose` ≈ 1.2s/dispatch. The cap binds only when per-call work-time `W` is large (~25s+); at short W (~1–2s, e.g., binary Y/N or single Likert), overhead dominates and fan-out gives no speedup.
+
+### Use single-persona-per-dispatch (`persona-respondent`) for:
+
+- Long-form work: free-text responses, multi-turn interviews, anything ≥10s of generation.
+- Voice-fidelity matters: per-persona register is critical (e.g., 22-year-old student vs. 65-year-old retiree distinct prosody).
+- N ≤ 10 items at long W (cap binds at ~4× speedup with fan-out).
+
+### Use batched-via-`general-purpose` for closed-form high-volume work
+
+For binary, Likert, multi-choice, ≥30 items:
+
+- **Pattern**: dispatch `general-purpose` agent with `persona-respondent`'s system instructions inlined into the user prompt, plus a multi-persona instruction.
+- **Recommended batching**: 10 personas per agent prompt; fan out to ~10 agents per round. Cap binds at ~4× during a round.
+- **Strict per-persona output format**: e.g., `i=NN: <answer>` one line per persona. Anchors structured output and minimizes blending.
+- **Don't bother randomizing order** — per-persona answers stable across reorderings (validated: 18/20 personas range ≤1 across 3 random orderings on a Likert question).
+
+### Validated empirically (2026-05-09)
+
+- **Correctness:** 100/100 correct on a binary marriage question (marriage100 run). 60 personas via `persona-respondent` one-shot + 40 via batched-`general-purpose`, all matching ground truth.
+- **Likert distribution:** batched produced *wider* distributions than one-shot dispatch (mean 2.85, std 1.24 vs. one-shot mean 2.50, std 1.00 with 11/20 clustered on safe-default-2). Cross-persona context provides implicit anchoring scale that corrects one-shot's central-low bias. **The pollution risk in the predicted direction was not observed.**
+- **Order-independence:** mean=2.80±0.05 and std=1.24±0.01 across original/reversed/shuffled orderings (n=3 replicates × 20 personas).
+
+### Caveats
+
+- **Mild length-compression under batching for free-text** (~27% lower per-persona length variance, std 8.1 vs 11.1 chars). The strict format prompt enforces uniform output style. If length is a measured outcome, prefer one-shot.
+- **Voice/register fidelity weaker under batching** (attention spans all personas in one call). For interview-depth or stylistic-distinctness work, stick with one-shot via `persona-respondent`.
+- **Mixing agent types does NOT increase throughput.** A 5×PR + 5×GP dispatch yields the same ~4× concurrency as 10 of either type alone — the cap is global.
+
+For full empirical evidence on the parallelism model (concurrency cap, per-type overhead, decisive experiments), see `~/.claude/rules/lessons/claude-code-agent-tool-parallelism.md`.
+
 ## Population characteristics that affect sampling design
 
 - **Ages skew older.** Mean 50.7, median 51 (the 1M-row population, not a calibrated reference). For sex × age-band stratification at small N (~300), the small cells are 19-29, NOT 60+ as one might predict. Sample-size floors to protect crosstab cells should target 19-29.
