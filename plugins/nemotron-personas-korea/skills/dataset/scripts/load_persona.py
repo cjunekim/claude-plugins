@@ -73,6 +73,8 @@ DESCRIPTIVE_FIELDS = [
     "occupation", "bachelors_field", "family_type",
 ]
 
+OPS = (">=", "<=", "==", ">", "<", "=")
+
 NUMERIC_OPS = {
     ">=": operator.ge,
     "<=": operator.le,
@@ -81,20 +83,22 @@ NUMERIC_OPS = {
 }
 
 
-def parse_filter(spec):
-    """List of (col, op, val) triples parsed from `sex=여자,age>=30,xsubstr=요리`.
+def parsed_clause(clause):
+    """The (col, op, val) triple expressed in `clause`, or None for an empty / op-less clause."""
+    text = clause.strip()
+    if not text:
+        return None
+    op = next((o for o in OPS if o in text), None)
+    if op is None:
+        return None
+    col, val = text.split(op, 1)
+    return (col.strip(), op, val.strip())
+
+
+def parsed_filter(spec):
+    """The list of (col, op, val) triples in `spec` (comma-separated clauses).
     Recognized ops: `=` `==` `>=` `<=` `>` `<`."""
-    items = []
-    for clause in spec.split(","):
-        clause = clause.strip()
-        if not clause:
-            continue
-        for op in (">=", "<=", "==", ">", "<", "="):
-            if op in clause:
-                col, val = clause.split(op, 1)
-                items.append((col.strip(), op, val.strip()))
-                break
-    return items
+    return [c for c in (parsed_clause(p) for p in spec.split(",")) if c]
 
 
 def province_mask(cells, val):
@@ -140,11 +144,10 @@ def validate_items(df, items):
     return None
 
 
-def apply_filter(df, items):
+def filtered(df, items):
     """`df` restricted to rows where every clause's mask holds."""
     masks = (clause_mask(df, *item) for item in items)
-    keep = reduce(operator.and_, masks, pd.Series(True, index=df.index))
-    return df.loc[keep]
+    return df.loc[reduce(operator.and_, masks, pd.Series(True, index=df.index))]
 
 
 def main():
@@ -169,11 +172,11 @@ def main():
             sys.exit(f"no persona found with uuid={args.uuid}")
         row = hits.iloc[0]
     else:
-        items = parse_filter(args.filter)
+        items = parsed_filter(args.filter)
         issue = validate_items(df, items)
         if issue:
             sys.exit(issue)
-        hits = apply_filter(df, items)
+        hits = filtered(df, items)
         if hits.empty:
             sys.exit(f"no persona matches filter: {args.filter}")
         row = hits.sample(n=1, random_state=args.seed).iloc[0]
