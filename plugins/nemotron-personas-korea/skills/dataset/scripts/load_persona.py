@@ -15,6 +15,9 @@ Usage
     # by demographic filter (random pick within filter, deterministic with --seed):
     python load_persona.py --filter "sex=여자,age>=30,age<=45,province=서울" --seed 42
 
+    # by substring across descriptive text fields plus occupation/degree field:
+    python load_persona.py --filter "sex=여자,xsubstr=요리" --seed 42
+
 Output: every persona-relevant field in a `=== <fieldname> ===` block
 format, suitable for piping into a prompt builder or reading verbatim.
 """
@@ -25,6 +28,28 @@ import sys
 
 REPO = "nvidia/Nemotron-Personas-Korea"
 
+PROVINCE_ALIASES = {
+    "서울특별시": "서울",
+    "부산광역시": "부산",
+    "인천광역시": "인천",
+    "대구광역시": "대구",
+    "대전광역시": "대전",
+    "광주광역시": "광주",
+    "울산광역시": "울산",
+    "경기도": "경기",
+    "강원도": "강원",
+    "강원특별자치도": "강원",
+    "충청북도": "충청북",
+    "충청남도": "충청남",
+    "전라북도": "전북",
+    "전북특별자치도": "전북",
+    "전라남도": "전라남",
+    "경상북도": "경상북",
+    "경상남도": "경상남",
+    "제주특별자치도": "제주",
+    "제주도": "제주",
+    "세종특별자치시": "세종",
+}
 FIELDS = [
     "uuid", "sex", "age", "province", "district",
     "education_level", "marital_status", "family_type",
@@ -36,9 +61,17 @@ FIELDS = [
     "hobbies_and_interests", "career_goals_and_ambitions",
 ]
 
+DESCRIPTIVE_FIELDS = [
+    "persona", "professional_persona", "sports_persona", "arts_persona",
+    "travel_persona", "culinary_persona", "family_persona",
+    "cultural_background", "skills_and_expertise",
+    "hobbies_and_interests", "career_goals_and_ambitions",
+    "occupation", "bachelors_field", "family_type",
+]
+
 
 def parse_filter(spec: str) -> list[tuple[str, str, str]]:
-    """`sex=여자,age>=30,province=서울` → list of (col, op, val) triples.
+    """`sex=여자,age>=30,xsubstr=요리` → list of (col, op, val) triples.
     Recognized ops: `=` `==` `>=` `<=` `>` `<`."""
     items = []
     for clause in spec.split(","):
@@ -57,11 +90,31 @@ def apply_filter(df, items):
     """`df` filtered down to rows satisfying every (col, op, val) clause."""
     import pandas as pd
     for col, op, val in items:
+        if col == "xsubstr":
+            if op not in ("=", "=="):
+                sys.exit("xsubstr only supports '=' or '==' operators")
+            missing = [field for field in DESCRIPTIVE_FIELDS if field not in df.columns]
+            if missing:
+                sys.exit(f"xsubstr fields missing from dataset: {missing}")
+            needle = val.lower()
+            text = df[DESCRIPTIVE_FIELDS].fillna("").astype(str)
+            mask = text.apply(lambda s: s.str.lower().str.contains(needle, regex=False, na=False)).any(axis=1)
+            df = df[mask]
+            continue
         if col not in df.columns:
             sys.exit(f"unknown column: {col!r} (available: {list(df.columns)})")
         series = df[col]
         if op in ("=", "=="):
-            df = df[series.astype(str) == val]
+            if col == "province":
+                requested = PROVINCE_ALIASES.get(val, val)
+                values = series.astype(str)
+                df = df[
+                    (values == requested)
+                    | values.str.contains(val, regex=False, na=False)
+                    | values.apply(lambda actual: actual in val)
+                ]
+            else:
+                df = df[series.astype(str) == val]
         elif op == ">=":
             df = df[series >= type(series.iloc[0])(val)]
         elif op == "<=":
@@ -78,7 +131,7 @@ def main() -> None:
 
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--uuid", help="exact uuid match")
-    ap.add_argument("--filter", help='comma-separated clauses, e.g. "sex=여자,age>=30,province=서울"')
+    ap.add_argument("--filter", help='comma-separated clauses, e.g. "sex=여자,age>=30,province=서울,xsubstr=요리"')
     ap.add_argument("--seed", type=int, default=0, help="seed for random pick within filter (default 0)")
     args = ap.parse_args()
 
