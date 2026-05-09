@@ -64,14 +64,24 @@ Claude Code's Agent tool has a **global concurrency cap of ~4** simultaneous sub
 - Voice-fidelity matters: per-persona register is critical (e.g., 22-year-old student vs. 65-year-old retiree distinct prosody).
 - N ≤ 10 items at long W (cap binds at ~4× speedup with fan-out).
 
-### Use batched-via-`general-purpose` for closed-form high-volume work
+### Use file-read batch via `persona-respondent` for high-volume *opinion* work (plugin v0.1.2+)
 
-For binary, Likert, multi-choice, ≥30 items:
+For opinion / value-projection questions where role-play depth matters more than throughput per dispatch, use file-read mode on `persona-respondent` directly:
+
+- **Pattern**: dispatcher writes 10-persona batches to disk (`### Persona i=NNN` blocks + question + per-persona output format). Then dispatches PR with prompt `READ_PERSONA_BATCH <absolute-path>` (one line, no other content needed). PR fetches the file via Read and applies its native role-play scaffolding to each persona block.
+- **Recommended batching**: 10 personas per file; fan out 5–10 dispatches per round. Cap=4 binds; ~10s per dispatch (W≈8s + emit ≈ 1s on a tiny dispatch message).
+- **Why this exists**: at scale, inline batching with 3 KB Korean prompts per dispatch hits ~29 s/dispatch of main-session emit overhead — for 50 dispatches, ~25 minutes just emitting. File-read mode reduces emit to ~1 s/dispatch, so the cap (~4) actually binds.
+- **Pre-requisite**: persona-respondent plugin ≥ v0.1.2 (earlier versions have `tools: []` and cannot invoke Read).
+
+### Use batched-via-`general-purpose` for closed-form *factual* high-volume work
+
+For binary, Likert, multi-choice on **factual** questions (ground truth knowable from the persona's stated demographics — e.g., "are you currently married?"), ≥30 items:
 
 - **Pattern**: dispatch `general-purpose` agent with `persona-respondent`'s system instructions inlined into the user prompt, plus a multi-persona instruction.
 - **Recommended batching**: 10 personas per agent prompt; fan out to ~10 agents per round. Cap binds at ~4× during a round.
 - **Strict per-persona output format**: e.g., `i=NN: <answer>` one line per persona. Anchors structured output and minimizes blending.
 - **Don't bother randomizing order** — per-persona answers stable across reorderings (validated: 18/20 personas range ≤1 across 3 random orderings on a Likert question).
+- **Limitation**: this pattern is validated on factual questions only. For opinion projection, prefer file-read PR (above).
 
 ### Validated empirically (2026-05-09)
 
@@ -84,6 +94,8 @@ For binary, Likert, multi-choice, ≥30 items:
 - **Mild length-compression under batching for free-text** (~27% lower per-persona length variance, std 8.1 vs 11.1 chars). The strict format prompt enforces uniform output style. If length is a measured outcome, prefer one-shot.
 - **Voice/register fidelity weaker under batching** (attention spans all personas in one call). For interview-depth or stylistic-distinctness work, stick with one-shot via `persona-respondent`.
 - **Mixing agent types does NOT increase throughput.** A 5×PR + 5×GP dispatch yields the same ~4× concurrency as 10 of either type alone — the cap is global.
+- **GP-with-inlined-PR-prompt under-projects on opinion / value questions.** Validated 2026-05-10 on a marriage opinion question (12-year-age-gap, n=20): 5% yes-rate vs 20% baseline from PR one-shot (n=60). The "GP=PR equivalent on closed-form binary" finding from 2026-05-09 was on a **factual** question (current marital status) — the equivalence does not generalize to opinion projection. For opinion / value / attitudinal questions, use file-read PR (above), which preserves PR's native role-play scaffolding while bypassing the inline-emit-overhead bottleneck.
+- **Inline batching with large CJK prompts hits emit-overhead at scale.** Main-session token emission for 3 KB Korean prompts measures at ~29 s/dispatch (CJK ≈ 3 tokens/syllable). For 50-dispatch runs that is ~25 min just emitting prompts and the cap never binds — agents launch ~30 s apart and effective concurrency collapses to ~1×. File-read mode is the mitigation. See `~/.claude/skills/agent-tool-throughput/SKILL.md` for the empirical model.
 
 For full empirical evidence on the parallelism model (concurrency cap, per-type overhead, decisive experiments), see `~/.claude/rules/lessons/claude-code-agent-tool-parallelism.md`.
 
