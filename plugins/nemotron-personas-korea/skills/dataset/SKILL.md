@@ -133,6 +133,24 @@ The diagnostic move is **a ladder of runs that change one element at a time**, h
 
 **Do not conclude anything from a single suspicious run.** Plan to run at least 3–4 follow-ups, each changing exactly one element (anchor wording, debias instruction, scale type, framing, field selection). Treat the *evolution across the ladder* as the primary evidence.
 
+### Projecting latent variables not in the dataset
+
+When the analytical question conditions on a variable the dataset does NOT encode (e.g., first-marriage vs remarriage status: this dataset has `marital_status` ∈ {배우자있음, 미혼, 사별, 이혼} but no marriage-history field), you have to project the latent from narrative + demographic cues. The LLM has two failure modes when the latent is unobserved (validated 2026-05-10 on a 초혼-conditional husband-age-gap question, n=500):
+
+1. **Default-uniform** — without any prior, the LLM classifies ~all personas as the modal class. Observed 99.8% 초혼 (n=499 of 500) when given no guidance — narratives don't mention 재혼 explicitly, so the LLM defaults conservatively. The latent filter is operationally inert; conditional rate ≈ marginal rate.
+2. **Correlation-borrow** — given only a marginal prior (e.g., "~10% of currently-married Korean women are 재혼") but no narrative cues, the LLM hits the prior's overall fraction but picks WHICH personas to flip using observable correlates of the latent. In our case, "10+ husband age gap" was used as a 재혼 proxy. Conditional yes-rate fell from 20% (no prior) to 5.8% (KOSIS-prior, no cues) — the 재혼 bucket absorbed the high-age-gap cases, dragging the 초혼 rate down.
+
+**Mitigation: give the LLM BOTH a marginal prior AND specific narrative cues.**
+
+- **Marginal prior**: tells the LLM what overall fraction to flip per batch (e.g., "~10% of currently-married women are in remarriage"). Calibrate from external demographic stats. For Korean data: KOSIS publishes flow data (annual marriages by 초혼/재혼) but rarely stock data (currently-married population by marriage history). Flow → stock requires cohort backward-induction: a currently-65-year-old woman's stock reflects 1980s–90s flow rates, not 2024 flow rates. Build the cohort-stratified prior accordingly.
+- **Narrative cues**: tells the LLM WHICH specific personas to flip — i.e., what features in the persona text should trigger the 재혼 label. For 재혼: 별거, 사별 후, 전 남편, 의붓자녀, unusual family-arrangement (`자녀와만 거주`, `손주와 거주` with no spouse mention). Without explicit cues, the LLM correlation-borrows from whatever observable correlates with the latent in its training prior — exactly the failure mode you wanted to avoid.
+
+**Bracket prior-sensitive results across with-prior and without-prior runs.**
+
+When the latent isn't directly observable, a single point estimate can swing 3× depending on prior choice (we saw 5.8% ↔ 20% in the 초혼-conditional 12-year-gap question). Run both extremes (no prior, calibrated prior with cues) and report the result as a range with a probable midpoint, not a single number. The without-prior run captures correlation-only attribution; the with-prior run captures prior-anchored projection. The honest answer lies between.
+
+**When the latent IS in the data** (e.g., filtering on `marital_status == 미혼` or `sex == 여자`), none of the above applies — direct filter, no projection error, no prior to debate, no bracketing needed. Use the column.
+
 ## Bundled assets
 
 - **`scripts/inspect_dataset.py`** — a standalone inspection script. Pins the dataset SHA, dumps schema + dtypes, samples 3 random rows in full, computes text-field length comparisons (which identifies the compact `persona` vs. the long narrative fields), reports the `province` distribution, and computes sex × age-band marginals with proportional N=300 allocation. Re-run on first contact in a new project, or whenever the dataset SHA may have changed, to verify findings against the live dataset.
