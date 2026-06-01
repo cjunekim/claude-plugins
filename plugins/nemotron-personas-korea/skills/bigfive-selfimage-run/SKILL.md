@@ -38,14 +38,14 @@ SAVE_REPLY_TO <abs-path-to>/pass1_selfimages/persona_<uuid8>.txt
 
 The first line tells the agent to read its persona prompt from disk (~50 bytes of dispatch instead of ~3 KB of inline persona content). The second line tells the agent to `Write` its reply directly to disk — the reply text bytes never flow back through the dispatcher's output stream, which is the binding constraint for long-reply work. This combination is why Pass 1 dispatches scale: dispatch prompts stay tiny AND tool_result content stays tiny ("OK" per dispatch).
 
-**Parallelism**: issue all N dispatches across as few assistant turns as comfortable. The harness queues at cap-4 in-flight globally. For batched turns, 25 dispatches per turn is a comfortable upper bound — small enough to leave context headroom, large enough that you only need ⌈N/25⌉ turns.
+**Parallelism**: issue all N dispatches across as few assistant turns as comfortable. No hard cap ≤24 (measured 2026-05-30) — dispatch is launch-rate-bound (~1.8 s/dispatch emit), so the personas you dispatch in a turn effectively all overlap. The 25-dispatches-per-turn upper bound is a *context-headroom* guide (you need ⌈N/25⌉ turns), NOT a concurrency limit. (Cap model changed 2026-05-30 — see the global `agent-tool-throughput` lesson; re-measure, never quote a cap from memory.)
 
 **Per-dispatch arguments:**
 - `subagent_type`: `nemotron-personas-korea:persona-respondent-v2`
 - `description`: e.g., `"Pass 1 <uuid8>"` (UI label, short)
 - `prompt`: the two-line `READ_PERSONA_BATCH` + `SAVE_REPLY_TO` block above
 
-Wall-clock estimate: Pass 1 averages 15–20s per dispatch × ⌈N/4⌉ waves. For N=100, ~6–8 min. For N=300, ~20 min.
+Wall-clock estimate: no hard cap ≤24, launch-rate-bound → `wall ≈ N·1.8 s + W` (W≈15–20 s/dispatch). For N=100, ~3–4 min; for N=300, ~9–11 min. (Model extrapolated beyond the measured N≤24 — re-measure; the cap model changed 2026-05-30, see the global `agent-tool-throughput` lesson.)
 
 **Don't drop personas.** Before the next phase, verify the dispatch count matches the persona count. A common failure mode is skipping a uuid in the batch construction. Diff `pass1_prompts/` vs your dispatched-uuid list.
 

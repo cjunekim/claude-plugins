@@ -19,15 +19,22 @@ Validated batch size: **10 personas per agent** for closed-form work.
 
 ## Lane 2: concurrency (parallel subagents)
 
-Cap: ~4 in-flight, global across agent types in the Claude Code harness.
+**No hard cap ≤24** (measured 2026-05-30; was ~4 on older Claude Code versions — re-measure, never trust a remembered cap). Main-session Agent dispatch is **launch-rate-bound, not cap-bound**: the ~1.8 s/dispatch emit is the bottleneck, and `wall ≈ N·1.8 s + W`. Useful parallelism = Little's law `L = W / 1.8 s`. Dispatch in ONE continuous stream — don't batch-and-wait (barriers waste time).
+
+| Work | per-dispatch W | fan out up to (≈ W/1.8 s) |
+|---|---|---|
+| closed-form, batch-of-10 | ~10–15 s | ~8 dispatches at once |
+| long free-text / self-image, one-per | ~45 s | ~25 at once |
 
 | N | subagents × personas-each |
 |---|---|
-| 1–3 | N × 1 |
-| 4–10 | 1 × N |
-| 11–40 | ⌈N/10⌉ × 10 (may saturate cap) |
-| 41–400 | ⌈N/10⌉ × 10, waved through cap=4 |
+| 1–3 | N × 1 (one-per) |
+| 4–10 | 1 × N closed-form; or N × 1 for free-text |
+| 11–80 | ⌈N/10⌉ × 10 closed-form, all launched at once (≤~8 batches run concurrently) |
+| 81–400 | ⌈N/10⌉ × 10, streamed (extra batches queue behind the launch emit, NOT a cap) |
 | >1000 | direct API, only if the user has opted in (see Defaults) |
+
+Beyond `L`, extra fan-out adds no parallelism (early agents finish before late ones launch), only context bloat. ⚠️ MAX-subscription rate limits may throttle below `L` at high fan-out — untested; if dispatches stall at ~20–25 concurrent, that's the real ceiling. The **dynamic-workflow runtime is a SEPARATE path**, hard-capped at `min(16, cores−2)` (=6 on an 8-core box) — don't confuse it with the no-cap Agent path.
 
 ## Defaults
 
@@ -38,14 +45,14 @@ Cap: ~4 in-flight, global across agent types in the Claude Code harness.
 
 One line, before launch:
 
-> N=10, file-read batch, 1 subagent × 10 personas (cap not exercised).
+> N=10, file-read batch, 1 dispatch × 10 personas (single dispatch, no fan-out needed).
 
 For fan-out:
 
-> N=80, file-read batch, 8 subagents × 10 personas, waves through cap=4 (~3× speedup vs serial).
+> N=80, file-read batch, 8 dispatches × 10 personas, all launched at once (no cap ≤24; bottleneck is the ~1.8 s/dispatch launch emit).
 
 Skip only for trivial N=1 single dispatches.
 
 ## Further reading
 
-For the empirical model behind the cap and batch-size choices (~4 in-flight global cap, ~29 s/dispatch s_emit penalty on 3 KB CJK prompts, validated batch-of-10 + fan-out-of-10 → 3–6× speedup on closed-form survey work), see `~/.claude/rules/lessons/claude-code-agent-tool-parallelism.md` and the `agent-tool-throughput` skill when installed.
+For the empirical model behind the concurrency and batch-size choices (NO hard cap ≤24 as of 2026-05-30 — launch-rate-bound via Little's law `L = W/1.8 s`; ~29 s/dispatch s_emit penalty on 3 KB CJK prompts; validated batch-of-10; dynamic-workflow runtime separately capped at `cores−2`), see `~/.claude/rules/lessons/claude-code-agent-tool-parallelism.md` and the `agent-tool-throughput` skill when installed. The cap has moved 4× across versions — always re-measure, never quote from memory.

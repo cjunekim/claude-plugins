@@ -56,21 +56,23 @@ Decide per question, not by use mode. For each candidate narrative field, ask: *
 
 ## Throughput patterns and dispatch strategy
 
-Claude Code's Agent tool has a **global concurrency cap of ~4** simultaneous sub-agent dispatches, applied across all subagent types. Per-dispatch overhead is type-dependent: `nemotron-personas-korea:persona-respondent` ≈ 1.85s/dispatch (plugin loading); `general-purpose` ≈ 1.2s/dispatch. The cap binds only when per-call work-time `W` is large (~25s+); at short W (~1–2s, e.g., binary Y/N or single Likert), overhead dominates and fan-out gives no speedup.
+**The concurrency model lives in the global sources — not duplicated here (this section is what drifted stale).** As of 2026-05-30: batched main-session Agent dispatch has **no hard cap ≤24** (measured), is **launch-rate-bound** (~1.8 s/dispatch emit; `wall ≈ N·1.8 s + W`), and useful fan-out = Little's law `L = W/1.8 s` (≈25 for ~45 s tasks, ≈8 for a closed-form batch-of-10). Per-dispatch overhead is still type-dependent (`persona-respondent` ≈1.85 s, `general-purpose` ≈1.2 s), and at short W (~1–2 s) overhead dominates so batch first. The **dynamic-workflow runtime** is a separate path capped at `min(16, cores−2)` = 6. **Re-measure the cap before relying on it — never quote from memory (it has moved 4× across versions).** Full model + fan-out sizing: `~/.claude/rules/lessons/claude-code-agent-tool-parallelism.md` and the `agent-tool-throughput` skill.
+
+Below: only the **nemotron-specific** dispatch-mode choices and empirical distribution/fidelity findings.
 
 ### Use single-persona-per-dispatch (`persona-respondent`) for:
 
 - Long-form work: free-text responses, multi-turn interviews, anything ≥10s of generation.
 - Voice-fidelity matters: per-persona register is critical (e.g., 22-year-old student vs. 65-year-old retiree distinct prosody).
-- N ≤ 10 items at long W (cap binds at ~4× speedup with fan-out).
+- N ≤ 10 items at long W (fan out one-per; the launch-rate ceiling `L≈25` is rarely reached at N≤10).
 
 ### Use file-read batch via `persona-respondent` for high-volume *opinion* work (plugin v0.1.2+)
 
 For opinion / value-projection questions where role-play depth matters more than throughput per dispatch, use file-read mode on `persona-respondent` directly:
 
 - **Pattern**: dispatcher writes 10-persona batches to disk (`### Persona i=NNN` blocks + question + per-persona output format). Then dispatches PR with prompt `READ_PERSONA_BATCH <absolute-path>` (one line, no other content needed). PR fetches the file via Read and applies its native role-play scaffolding to each persona block.
-- **Recommended batching**: 10 personas per file; fan out 5–10 dispatches per round. Cap=4 binds; ~10s per dispatch (W≈8s + emit ≈ 1s on a tiny dispatch message).
-- **Why this exists**: at scale, inline batching with 3 KB Korean prompts per dispatch hits ~29 s/dispatch of main-session emit overhead — for 50 dispatches, ~25 minutes just emitting. File-read mode reduces emit to ~1 s/dispatch, so the cap (~4) actually binds.
+- **Recommended batching**: 10 personas per file; fan out the ⌈N/10⌉ batch-dispatches in one continuous stream (~10 s per dispatch: W≈8 s + ~1 s emit; at W≈10 s up to ~8 run concurrently — no cap ≤24).
+- **Why this exists**: at scale, inline batching with 3 KB Korean prompts per dispatch hits ~29 s/dispatch of main-session emit overhead — for 50 dispatches, ~25 minutes just emitting. File-read mode reduces emit to ~1 s/dispatch, so dispatches actually overlap instead of collapsing under emit-stagger.
 - **Pre-requisite**: persona-respondent plugin ≥ v0.1.2 (earlier versions have `tools: []` and cannot invoke Read).
 
 ### Use batched-via-`general-purpose` for closed-form *factual* high-volume work
@@ -78,7 +80,7 @@ For opinion / value-projection questions where role-play depth matters more than
 For binary, Likert, multi-choice on **factual** questions (ground truth knowable from the persona's stated demographics — e.g., "are you currently married?"), ≥30 items:
 
 - **Pattern**: dispatch `general-purpose` agent with `persona-respondent`'s system instructions inlined into the user prompt, plus a multi-persona instruction.
-- **Recommended batching**: 10 personas per agent prompt; fan out to ~10 agents per round. Cap binds at ~4× during a round.
+- **Recommended batching**: 10 personas per agent prompt; fan out the batch-dispatches in one continuous stream (~8 run concurrently at W≈10 s; no cap ≤24).
 - **Strict per-persona output format**: e.g., `i=NN: <answer>` one line per persona. Anchors structured output and minimizes blending.
 - **Don't bother randomizing order** — per-persona answers stable across reorderings (validated: 18/20 personas range ≤1 across 3 random orderings on a Likert question).
 - **Limitation**: this pattern is validated on factual questions only. For opinion projection, prefer file-read PR (above).
@@ -93,9 +95,9 @@ For binary, Likert, multi-choice on **factual** questions (ground truth knowable
 
 - **Mild length-compression under batching for free-text** (~27% lower per-persona length variance, std 8.1 vs 11.1 chars). The strict format prompt enforces uniform output style. If length is a measured outcome, prefer one-shot.
 - **Voice/register fidelity weaker under batching** (attention spans all personas in one call). For interview-depth or stylistic-distinctness work, stick with one-shot via `persona-respondent`.
-- **Mixing agent types does NOT increase throughput.** A 5×PR + 5×GP dispatch yields the same ~4× concurrency as 10 of either type alone — the cap is global.
+- **Mixing agent types does NOT increase throughput.** Fan-out is launch-rate-bound (~1.8 s/dispatch emit), so a 5×PR + 5×GP dispatch is no faster than 10 of either type alone.
 - **GP-with-inlined-PR-prompt under-projects on opinion / value questions.** Validated 2026-05-10 on a marriage opinion question (12-year-age-gap, n=20): 5% yes-rate vs 20% baseline from PR one-shot (n=60). The "GP=PR equivalent on closed-form binary" finding from 2026-05-09 was on a **factual** question (current marital status) — the equivalence does not generalize to opinion projection. For opinion / value / attitudinal questions, use file-read PR (above), which preserves PR's native role-play scaffolding while bypassing the inline-emit-overhead bottleneck.
-- **Inline batching with large CJK prompts hits emit-overhead at scale.** Main-session token emission for 3 KB Korean prompts measures at ~29 s/dispatch (CJK ≈ 3 tokens/syllable). For 50-dispatch runs that is ~25 min just emitting prompts and the cap never binds — agents launch ~30 s apart and effective concurrency collapses to ~1×. File-read mode is the mitigation. See `~/.claude/skills/agent-tool-throughput/SKILL.md` for the empirical model.
+- **Inline batching with large CJK prompts hits emit-overhead at scale.** Main-session token emission for 3 KB Korean prompts measures at ~29 s/dispatch (CJK ≈ 3 tokens/syllable). For 50-dispatch runs that is ~25 min just emitting prompts — agents launch ~30 s apart and effective concurrency collapses to ~1×. File-read mode is the mitigation. See `~/.claude/skills/agent-tool-throughput/SKILL.md` for the empirical model.
 
 For full empirical evidence on the parallelism model (concurrency cap, per-type overhead, decisive experiments), see `~/.claude/rules/lessons/claude-code-agent-tool-parallelism.md`.
 
