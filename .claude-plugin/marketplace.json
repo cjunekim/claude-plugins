@@ -10,8 +10,8 @@
   "plugins": [
     {
       "name": "nemotron-personas-korea",
-      "description": "Korean LLM-as-respondent toolkit built around the nvidia/Nemotron-Personas-Korea HuggingFace dataset (1M synthetic Korean adults). Bundles a dataset-reference skill (schema quirks, instrument-design lessons, bundled inspection + persona-loader scripts), a persona-respondent sub-agent for closed-form survey calls, and a /persona-interviewee slash command for in-character qualitative interviews.",
-      "version": "0.1.1",
+      "description": "Korean LLM-as-respondent toolkit built around the nvidia/Nemotron-Personas-Korea HuggingFace dataset (1M synthetic Korean adults). Bundles dataset-reference and dispatch-strategy skills, the bigfive-selfimage-run runbook + bigfive-selfimage-iter-campaign runbook (augmentation-iteration variant) + bulk-reply-save save pattern for batched dispatches, persona-respondent and persona-respondent-v2 sub-agents (v2 adds bracket-as-stage-direction + multi-item dispatch), and a /persona-interviewee slash command for in-character qualitative interviews.",
+      "version": "0.1.6",
       "author": {
         "name": "cjunekim"
       },
