@@ -1,11 +1,11 @@
 ---
 name: bigfive-selfimage-run
-description: End-to-end runbook for the Korean Big Five selfimage study using `persona-respondent-v2` subagent dispatches (Pass 1 self-image → Pass 2 Likert → score → audit). TRIGGER when the user asks to run a Big Five selfimage experiment at any n, scale a previous run to a larger n, re-run with different demographics/seed, or audit an existing run dir. TRIGGER on phrases like "run bigfive_selfimage at n=300", "let's scale to n=500", "do another Big Five run", "audit run XYZ", "let's do a Big Five study". TRIGGER when starting work in the `nemotron` project on anything Big-Five-related where the existing `nemotron/bigfive_selfimage/` package is the right entry point (not the older `nemotron.bigfive` API-based pipeline). Covers the operational sequence — materialize prompts, dispatch Pass 1 in parallel via file-read + file-write directives (`READ_PERSONA_BATCH` + `SAVE_REPLY_TO`), verify counts, build Pass 2 prompts, dispatch Pass 2, score, audit. The subagent writes its own reply files in parallel, so the dispatcher never retranscribes content — neither in inline replies nor in JSON manifests. Don't try to redo orchestration ad-hoc; this skill exists because the n=100 run revealed several wrong defaults (per-file Writes, sequential dispatch, manifest hand-transcription, missed personas) that this runbook now guards against.
+description: End-to-end runbook for the Korean Big Five selfimage study using `persona-respondent` subagent dispatches (Pass 1 self-image → Pass 2 Likert → score → audit). TRIGGER when the user asks to run a Big Five selfimage experiment at any n, scale a previous run to a larger n, re-run with different demographics/seed, or audit an existing run dir. TRIGGER on phrases like "run bigfive_selfimage at n=300", "let's scale to n=500", "do another Big Five run", "audit run XYZ", "let's do a Big Five study". TRIGGER when starting work in the `nemotron` project on anything Big-Five-related where the existing `nemotron/bigfive_selfimage/` package is the right entry point (not the older `nemotron.bigfive` API-based pipeline). Covers the operational sequence — materialize prompts, dispatch Pass 1 in parallel via file-read + file-write directives (`READ_PERSONA_BATCH` + `SAVE_REPLY_TO`), verify counts, build Pass 2 prompts, dispatch Pass 2, score, audit. The subagent writes its own reply files in parallel, so the dispatcher never retranscribes content — neither in inline replies nor in JSON manifests. Don't try to redo orchestration ad-hoc; this skill exists because the n=100 run revealed several wrong defaults (per-file Writes, sequential dispatch, manifest hand-transcription, missed personas) that this runbook now guards against.
 ---
 
 # Big Five selfimage — operational runbook
 
-The `nemotron.bigfive_selfimage` pipeline is a two-pass Korean personality study: Pass 1 generates a persona's first-person self-image in Korean; Pass 2 answers the 12-item NPA Likert with that self-image baked in. All dispatch goes through `nemotron-personas-korea:persona-respondent-v2` — no API spend.
+The `nemotron.bigfive_selfimage` pipeline is a two-pass Korean personality study: Pass 1 generates a persona's first-person self-image in Korean; Pass 2 answers the 12-item NPA Likert with that self-image baked in. All dispatch goes through `nemotron-personas-korea:persona-respondent` — no API spend.
 
 This runbook assumes everything exists in the project: the agent, the helpers (`nemotron.bigfive_selfimage`), the smoke materializer (`scripts/bigfive_selfimage_smoke.py`), and the save helper (`scripts/bigfive_selfimage_save_replies.py`). If anything is missing, fall back to the spec at `docs/superpowers/specs/2026-05-24-bigfive-v2-persona-respondent-design.md`.
 
@@ -41,7 +41,7 @@ The first line tells the agent to read its persona prompt from disk (~50 bytes o
 **Parallelism**: issue all N dispatches across as few assistant turns as comfortable. No hard cap ≤24 (measured 2026-05-30) — dispatch is launch-rate-bound (~1.8 s/dispatch emit), so the personas you dispatch in a turn effectively all overlap. The 25-dispatches-per-turn upper bound is a *context-headroom* guide (you need ⌈N/25⌉ turns), NOT a concurrency limit. (Cap model changed 2026-05-30 — see the global `agent-tool-throughput` lesson; re-measure, never quote a cap from memory.)
 
 **Per-dispatch arguments:**
-- `subagent_type`: `nemotron-personas-korea:persona-respondent-v2`
+- `subagent_type`: `nemotron-personas-korea:persona-respondent`
 - `description`: e.g., `"Pass 1 <uuid8>"` (UI label, short)
 - `prompt`: the two-line `READ_PERSONA_BATCH` + `SAVE_REPLY_TO` block above
 
@@ -158,7 +158,7 @@ pd.DataFrame(scored).to_parquet(run_dir / 'answers.parquet')
     json.dumps(scored, ensure_ascii=False, indent=2), encoding='utf-8',
 )
 
-title = f'Big Five selfimage n={len(scored)} via persona-respondent-v2'
+title = f'Big Five selfimage n={len(scored)} via persona-respondent'
 summary = summary_report(scored, title=title)
 ans_lists = [s['answers'] for s in scored]
 all_answers = pd.Series([x for row in ans_lists for x in row])

@@ -1,6 +1,6 @@
 ---
 name: bulk-reply-save
-description: Persist N persona-respondent reply files (or any N similar text files from one turn) using 2 tool calls — JSON manifest + Bash + Python helper — instead of N individual `Write` tool calls. TRIGGER any time you are about to emit ≥3 `Write` tool_use blocks for similar files (same target directory, parallel naming scheme) in one assistant response. TRIGGER when finishing a batched Agent-tool dispatch (`persona-respondent`, `persona-respondent-v2`, or any inline-batch fanout) and about to save Pass 1 self-images, Pass 2 Likert replies, augmentation outputs, or any other batched-dispatch artifacts. TRIGGER when persisting N agent outputs after a parallel `READ_PERSONA_BATCH` fan-out, or any time the user says "save the replies" / "write all of these" / "persist these to disk" after a batched dispatch. Per-file `Write` calls at N≥3 carry per-call harness overhead and may serialize at the framework layer — the bulk pattern writes N files inside a single Python process at OS speed (sub-millisecond per file).
+description: Persist N persona-respondent reply files (or any N similar text files from one turn) using 2 tool calls — JSON manifest + Bash + Python helper — instead of N individual `Write` tool calls. TRIGGER any time you are about to emit ≥3 `Write` tool_use blocks for similar files (same target directory, parallel naming scheme) in one assistant response. TRIGGER when finishing a batched Agent-tool dispatch (`persona-respondent` or any inline-batch fanout) and about to save Pass 1 self-images, Pass 2 Likert replies, augmentation outputs, or any other batched-dispatch artifacts. TRIGGER when persisting N agent outputs after a parallel `READ_PERSONA_BATCH` fan-out, or any time the user says "save the replies" / "write all of these" / "persist these to disk" after a batched dispatch. Per-file `Write` calls at N≥3 carry per-call harness overhead and may serialize at the framework layer — the bulk pattern writes N files inside a single Python process at OS speed (sub-millisecond per file).
 ---
 
 # Bulk reply save
@@ -9,7 +9,7 @@ When a turn ends with N similar files to persist (e.g., 25 persona-respondent re
 
 ## When the subagent-Write pattern is even better
 
-If the subagent has `Write` in its tools list (e.g., `persona-respondent-v2` from v0.1.6 onward), prefer the `SAVE_REPLY_TO <abs-path>` directive in the dispatch prompt over this skill's manifest pattern. Each subagent writes its own reply file in parallel inside its own context, so the heavy reply content never flows through the dispatcher's output stream at all.
+If the subagent has `Write` in its tools list (e.g., `persona-respondent` from v0.1.7 onward), prefer the `SAVE_REPLY_TO <abs-path>` directive in the dispatch prompt over this skill's manifest pattern. Each subagent writes its own reply file in parallel inside its own context, so the heavy reply content never flows through the dispatcher's output stream at all.
 
 The manifest pattern in this skill still requires the dispatcher to retranscribe N reply texts as output tokens into the JSON literal. For long replies (e.g., 1 KB Korean self-images), that is the wall-clock bottleneck — not the per-`Write` tool overhead. `SAVE_REPLY_TO` eliminates the retranscription entirely.
 

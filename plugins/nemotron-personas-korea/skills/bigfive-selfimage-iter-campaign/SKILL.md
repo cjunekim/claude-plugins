@@ -45,7 +45,7 @@ It writes 50 prompt files to `scripts/_o_augment_pilot/gen_prompts_v<NN>/persona
 
 ## Phase 2 — Dispatch augmentation generation (general-purpose subagents)
 
-50 dispatches across 2 batches of 25. **Use `general-purpose`, NOT `persona-respondent-v2`** — augmentation generation is a writing task, not a role-play.
+50 dispatches across 2 batches of 25. **Use `general-purpose`, NOT `persona-respondent`** — augmentation generation is a writing task, not a role-play.
 
 Per-dispatch prompt template:
 ```
@@ -77,7 +77,7 @@ PYTHONIOENCODING=utf-8 PYTHONPATH=. .venv/Scripts/python.exe scripts/_o_augment_
 
 Capture the absolute run dir path for Phase 4 dispatch prompts.
 
-## Phase 4 — Dispatch Pass 1 (persona-respondent-v2)
+## Phase 4 — Dispatch Pass 1 (persona-respondent)
 
 Same shape as `bigfive-selfimage-run` Phase 2: `READ_PERSONA_BATCH` + `SAVE_REPLY_TO`, 50 dispatches in 2 batches of 25. Wall-clock: ~40s/dispatch, no hard cap ≤24 (`wall ≈ N·1.8 s + W`) → ~2.5–3 min.
 
