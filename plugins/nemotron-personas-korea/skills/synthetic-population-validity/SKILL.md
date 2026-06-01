@@ -94,32 +94,35 @@ numbers that look like method signal but are artifacts.
   Cohen's w, confirm reverse-coded items aren't both endorsed, and shuffle option
   order to check the marginal is stable.
 
-## Step 1 — Climb the stack, one rung at a time
+## Step 1 — Start at shape, then climb
 
-Don't compute the whole stack at once — climb it one rung at a time, in the stack's
-order, because each rung's result is what tells you whether the next is worth looking
-at and what to expect there. Work per variable.
+Don't compute the whole stack at once, and don't start at the bottom of it. The stack
+*numbers* the marginal as Level 1 because it's logically necessary for the rest — but
+that numbering is a stringency taxonomy, not a work order. Start the work at the
+strongest rung — the one that already gives a verdict you can trust on its own — and
+climb out from there. Work per variable.
 
-**Rung 1 — marginal (Level 1).** Does central tendency match (Δmean, Δquartile-mass)?
-Necessary, never sufficient: a *mismatch* is already a finding (the source is off at the
-crudest level), but a *match* is the trap, not a pass — it says nothing about shape or
-structure, so it never lets you stop. Either way you climb. (This is why "if you do only
-one thing" jumps past it to shape: the marginal in isolation misleads.)
+**Glance at the marginal (Level 1) — don't rest there.** Read Δmean / Δquartile-mass: a
+gross *mismatch* is a cheap early exit (the source is off at the crudest level), but a
+*match* tells you nothing — necessary, never sufficient, and a matching mean is the
+trap. So the marginal is a precondition you read in passing, not where the validation
+lives.
 
-**Rung 2 — shape (Level 2).** Compute Cohen's w against the reference and read it with
-the fidelity tiers (`effect_size_tier`), not p-values: with a synthetic source N is
-arbitrary, so χ² always rejects and p is uninformative. Tiers: `<0.10` excellent ·
-`0.10–0.30` small · `0.30–0.50` medium-low · `0.50–0.80` medium · `>0.80` large
-(document as a gap, don't build claims on it). Gate every w on its sampling floor
-(Step 2) — a w inside the band is noise, not a verdict. Read the per-bin counts beside
-it to name *which* bin is off. This is the first *informative* rung.
+**Start here — shape (Level 2).** Per variable, compute Cohen's w against the reference
+and read it with the fidelity tiers (`effect_size_tier`), not p-values: with a synthetic
+source N is arbitrary, so χ² always rejects and p is uninformative. Tiers: `<0.10`
+excellent · `0.10–0.30` small · `0.30–0.50` medium-low · `0.50–0.80` medium · `>0.80`
+large (document as a gap, don't build claims on it). Gate every w on its sampling floor
+(Step 2) — a w inside the band is noise, not a verdict. Read the per-bin counts to name
+*which* bin is off. Shape + floor is the smallest complete, honest check — the "if you
+do only one thing" loop — and you could stop here and still have a verdict you trust.
 
-**Rung 3 — structure (Level 3).** A clean shape *licenses the next look*, it doesn't end
+**Climb to structure (Level 3).** A clean shape *licenses the next look*, it doesn't end
 the inquiry: climb to between-unit dispersion (`sd_ratio`, plus `variance_components` for
 ICC) and cross-variable joint structure (`correlation_distortion`). Because
 under-dispersion and correlation-distortion are the same defect, a variable that passed
-shape can still collapse here. Whether a rung passes or fails, climb to the top — a pass
-licenses the next look, a failure is a finding — and report each rung as you reach it.
+shape can still collapse here — so a pass is a reason to climb, never to stop. Report
+each rung as you reach it.
 
 **Per variable, never only the aggregate.** A mean w can improve while one variable is
 χ²-rejected, and self-cancelling per-variable effects hide inside a null aggregate. The
